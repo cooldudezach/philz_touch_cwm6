@@ -211,7 +211,9 @@ int show_install_update_menu() {
     static char* install_menu_items[MAX_NUM_MANAGED_VOLUMES + FIXED_INSTALL_ZIP_MENUS + 1];
 
     char* primary_path = get_primary_storage_path();
+    char* primary_label = get_primary_storage_label();
     char** extra_paths = get_extra_storage_paths();
+    char** extra_labels = get_extra_storage_labels();
     int num_extra_volumes = get_num_extra_volumes();
 
     memset(install_menu_items, 0, MAX_NUM_MANAGED_VOLUMES + FIXED_INSTALL_ZIP_MENUS + 1);
@@ -219,12 +221,12 @@ int show_install_update_menu() {
     static const char* headers[] = { "Install update from zip file", "", NULL };
 
     // FIXED_TOP_INSTALL_ZIP_MENUS
-    sprintf(buf, "Choose zip from %s", primary_path);
+    sprintf(buf, "Choose zip from %s", primary_label);
     install_menu_items[0] = strdup(buf);
 
     // extra storage volumes (vold managed)
     for (i = 0; i < num_extra_volumes; i++) {
-        sprintf(buf, "Choose zip from %s", extra_paths[i]);
+        sprintf(buf, "Choose zip from %s", extra_labels[i]);
         install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + i] = strdup(buf);
     }
 
@@ -923,6 +925,7 @@ int show_partition_menu() {
     int i, mountable_volumes, formatable_volumes;
     int num_volumes;
     int chosen_item = 0;
+    int j = 0;
 
     num_volumes = get_num_volumes();
 
@@ -934,6 +937,7 @@ int show_partition_menu() {
 
     mount_menu = malloc(num_volumes * sizeof(MountMenuEntry));
     format_menu = malloc(num_volumes * sizeof(FormatMenuEntry));
+    char** extra_labels = get_extra_storage_labels();
 
     for (i = 0; i < num_volumes; i++) {
         Volume* v = get_device_volumes() + i;
@@ -944,14 +948,18 @@ int show_partition_menu() {
 
         MFMatrix mfm = get_mnt_fmt_capabilities(v->fs_type, v->mount_point);
 
+        char* display_label = v->mount_point;
+        if (fs_mgr_is_voldmanaged(v)) {
+            display_label = extra_labels[j++];
+        }
         if (mfm.can_mount) {
-            sprintf(mount_menu[mountable_volumes].mount, "mount %s", v->mount_point);
-            sprintf(mount_menu[mountable_volumes].unmount, "unmount %s", v->mount_point);
+            sprintf(mount_menu[mountable_volumes].mount, "mount %s", display_label);
+            sprintf(mount_menu[mountable_volumes].unmount, "unmount %s", display_label);
             sprintf(mount_menu[mountable_volumes].path, "%s", v->mount_point);
             ++mountable_volumes;
         }
         if (mfm.can_format) {
-            sprintf(format_menu[formatable_volumes].txt, "format %s", v->mount_point);
+            sprintf(format_menu[formatable_volumes].txt, "format %s", display_label);
             sprintf(format_menu[formatable_volumes].path, "%s", v->mount_point);
             sprintf(format_menu[formatable_volumes].type, "%s", v->fs_type);
             ++formatable_volumes;
@@ -1212,7 +1220,9 @@ static void add_nandroid_options_for_volume(char** menu, char* path, int offset)
 
 int show_nandroid_menu() {
     char* primary_path = get_primary_storage_path();
+    char* primary_label = get_primary_storage_label();
     char** extra_paths = get_extra_storage_paths();
+    char** extra_labels = get_extra_storage_labels();
     int num_extra_volumes = get_num_extra_volumes();
     int i = 0, offset = 0, chosen_item = 0;
     char* chosen_path = NULL;
@@ -1225,13 +1235,13 @@ int show_nandroid_menu() {
     static char* list[((MAX_NUM_MANAGED_VOLUMES + 1) * NANDROID_ACTIONS_NUM) + NANDROID_FIXED_ENTRIES + 1];
 
     // actions for primary_path
-    add_nandroid_options_for_volume(list, primary_path, offset);
+    add_nandroid_options_for_volume(list, primary_label, offset);
     offset += NANDROID_ACTIONS_NUM;
 
     // actions for voldmanaged volumes
     if (extra_paths != NULL) {
         for (i = 0; i < num_extra_volumes; i++) {
-            add_nandroid_options_for_volume(list, extra_paths[i], offset);
+            add_nandroid_options_for_volume(list, extra_labels[i], offset);
             offset += NANDROID_ACTIONS_NUM;
         }
     }
@@ -1548,7 +1558,9 @@ int show_advanced_menu() {
     static char* list[MAX_NUM_MANAGED_VOLUMES + FIXED_ADVANCED_ENTRIES + 1];
 
     char* primary_path = get_primary_storage_path();
+    char* primary_label = get_primary_storage_label();
     char** extra_paths = get_extra_storage_paths();
+    char** extra_labels = get_extra_storage_labels();
     int num_extra_volumes = get_num_extra_volumes();
 
     static const char* headers[] = { "Advanced Menu", NULL };
@@ -1566,7 +1578,7 @@ int show_advanced_menu() {
 
     char list_prefix[] = "Partition ";
     if (can_partition(primary_path)) {
-        sprintf(buf, "%s%s", list_prefix, primary_path);
+        sprintf(buf, "%s%s", list_prefix, primary_label);
         list[FIXED_ADVANCED_ENTRIES] = strdup(buf);
         j++;
     }
@@ -1574,7 +1586,7 @@ int show_advanced_menu() {
     if (extra_paths != NULL) {
         for (i = 0; i < num_extra_volumes; i++) {
             if (can_partition(extra_paths[i])) {
-                sprintf(buf, "%s%s", list_prefix, extra_paths[i]);
+                sprintf(buf, "%s%s", list_prefix, extra_labels[i]);
                 list[FIXED_ADVANCED_ENTRIES + j] = strdup(buf);
                 j++;
             }
@@ -1666,7 +1678,10 @@ int show_advanced_menu() {
                 break;
 #endif
             default:
-                partition_sdcard(list[chosen_item] + strlen(list_prefix));
+                if (chosen_item == FIXED_ADVANCED_ENTRIES && can_partition(primary_path))
+                    partition_sdcard(primary_path);
+                else if (chosen_item >= FIXED_ADVANCED_ENTRIES && chosen_item < FIXED_ADVANCED_ENTRIES + num_extra_volumes)
+                    partition_sdcard(extra_paths[chosen_item - FIXED_ADVANCED_ENTRIES]);
                 break;
         }
     }

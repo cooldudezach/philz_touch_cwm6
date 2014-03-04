@@ -784,20 +784,37 @@ int run_ors_boot_script() {
 // sets the default backup volume for ors backup command
 // default is primary storage
 static void get_ors_backup_volume(char *volume) {
+    int i = 0, j = 0;
     char value_def[PATH_MAX];
+    char** extra_labels = get_extra_storage_labels();
     sprintf(value_def, "%s", get_primary_storage_path());
     read_config_file(PHILZ_SETTINGS_FILE, ors_backup_path.key, ors_backup_path.value, value_def);
     // on data media device, v == NULL if it is sdcard. But, it doesn't matter since value_def will be /sdcard in that case
-    Volume* v = volume_for_path(ors_backup_path.value);
-    if (v != NULL && ensure_path_mounted(ors_backup_path.value) == 0 && strcmp(ors_backup_path.value, v->mount_point) == 0)
-        strcpy(volume, ors_backup_path.value);
-    else strcpy(volume, value_def);
+
+    Volume* vo = volume_for_path(ors_backup_path.value);
+    if (vo != NULL && ensure_path_mounted(ors_backup_path.value) == 0 && strcmp(ors_backup_path.value, vo->mount_point) == 0) {
+        for (i = 0; i < get_num_volumes(); i++) {
+            Volume* v = get_device_volumes() + i;
+            if ((strcmp(ors_backup_path.value, v->mount_point) == 0) ||
+                    ((strcmp(get_primary_storage_path(), v->mount_point) != 0) &&
+                    fs_mgr_is_voldmanaged(v) && vold_is_volume_available(v->mount_point))) {
+#ifdef TARGET_STORAGE_DISPLAY_LABELS
+                strcpy(volume, extra_labels[j]);
+#else
+                strcpy(volume, ors_backup_path.value);
+#endif
+                j++;
+            }
+        }
+    } else strcpy(volume, get_primary_storage_label());
 }
 
 // choose ors backup volume and save user setting
 static void choose_ors_volume() {
     char* primary_path = get_primary_storage_path();
+    char* primary_label = get_primary_storage_label();
     char** extra_paths = get_extra_storage_paths();
+    char** extra_labels = get_extra_storage_labels();
     int num_extra_volumes = get_num_extra_volumes();
 
     static const char* headers[] = {  "Save ors backups to:",
@@ -806,13 +823,13 @@ static void choose_ors_volume() {
 
     static char* list[MAX_NUM_MANAGED_VOLUMES + 1];
     memset(list, 0, MAX_NUM_MANAGED_VOLUMES + 1);
-    list[0] = strdup(primary_path);
+    list[0] = strdup(primary_label);
 
     char buf[80];
     int i;
     if (extra_paths != NULL) {
         for(i = 0; i < num_extra_volumes; i++) {
-            sprintf(buf, "%s", extra_paths[i]);
+            sprintf(buf, "%s", extra_labels[i]);
             list[i + 1] = strdup(buf);
         }
     }
@@ -820,7 +837,10 @@ static void choose_ors_volume() {
 
     int chosen_item = get_menu_selection(headers, list, 0, 0);
     if (chosen_item != GO_BACK && chosen_item != REFRESH)
-        write_config_file(PHILZ_SETTINGS_FILE, ors_backup_path.key, list[chosen_item]);
+        if (chosen_item == 0)
+            write_config_file(PHILZ_SETTINGS_FILE, ors_backup_path.key, primary_path);
+        else
+            write_config_file(PHILZ_SETTINGS_FILE, ors_backup_path.key, extra_paths[chosen_item - 1]);
 
     free(list[0]);
     if (extra_paths != NULL) {
@@ -1271,7 +1291,9 @@ static void choose_custom_ors_menu(const char* ors_path)
 //show menu: select sdcard volume to search for custom ors file
 static void show_custom_ors_menu() {
     char* primary_path = get_primary_storage_path();
+    char* primary_label = get_primary_storage_label();
     char** extra_paths = get_extra_storage_paths();
+    char** extra_labels = get_extra_storage_labels();
     int num_extra_volumes = get_num_extra_volumes();
 
     static const char* headers[] = {  "Search .ors script to run",
@@ -1283,13 +1305,13 @@ static void show_custom_ors_menu() {
     char list_prefix[] = "Search ";
     char buf[256];
     memset(list, 0, MAX_NUM_MANAGED_VOLUMES + 1);
-    sprintf(buf, "%s%s", list_prefix, primary_path);
+    sprintf(buf, "%s%s", list_prefix, primary_label);
     list[0] = strdup(buf);
 
     int i;
     if (extra_paths != NULL) {
         for(i = 0; i < num_extra_volumes; i++) {
-            sprintf(buf, "%s%s", list_prefix, extra_paths[i]);
+            sprintf(buf, "%s%s", list_prefix, extra_labels[i]);
             list[i + 1] = strdup(buf);
         }
     }
@@ -1301,7 +1323,10 @@ static void show_custom_ors_menu() {
         chosen_item = get_menu_selection(headers, list, 0, 0);
         if (chosen_item == GO_BACK || chosen_item == REFRESH)
             break;
-        choose_custom_ors_menu(list[chosen_item] + strlen(list_prefix));
+        if (chosen_item == 0)
+            choose_custom_ors_menu(primary_path);
+        else
+            choose_custom_ors_menu(extra_paths[chosen_item - 1]);
     }
 
     free(list[0]);
@@ -1371,7 +1396,9 @@ static void regenerate_md5_sum_menu() {
         return;
 
     char* primary_path = get_primary_storage_path();
+    char* primary_label = get_primary_storage_label();
     char** extra_paths = get_extra_storage_paths();
+    char** extra_labels = get_extra_storage_labels();
     int num_extra_volumes = get_num_extra_volumes();
 
     char list_prefix[] = "Select from ";
@@ -1379,13 +1406,13 @@ static void regenerate_md5_sum_menu() {
     static const char* headers[] = {"Regenerate md5 sum", "Select a backup to regenerate", NULL};
     static char* list[MAX_NUM_MANAGED_VOLUMES + 1];
     memset(list, 0, MAX_NUM_MANAGED_VOLUMES + 1);
-    sprintf(buf, "%s%s", list_prefix, primary_path);
+    sprintf(buf, "%s%s", list_prefix, primary_label);
     list[0] = strdup(buf);
 
     int i;
     if (extra_paths != NULL) {
         for(i = 0; i < num_extra_volumes; i++) {
-            sprintf(buf, "%s%s", list_prefix, extra_paths[i]);
+            sprintf(buf, "%s%s", list_prefix, extra_labels[i]);
             list[i + 1] = strdup(buf);
         }
     }
@@ -1397,7 +1424,10 @@ static void regenerate_md5_sum_menu() {
         goto out;
 
     // select backup set and regenerate md5 sum
-    sprintf(tmp, "%s/clockworkmod/backup/", list[chosen_item] + strlen(list_prefix));
+    if (chosen_item == 0)
+        sprintf(tmp, "%s/clockworkmod/backup/", primary_path);
+    else
+        sprintf(tmp, "%s/clockworkmod/backup/", extra_paths[chosen_item - 1]);
     if (ensure_path_mounted(tmp) != 0)
         goto out;
 
@@ -1647,7 +1677,9 @@ void misc_nandroid_menu()
 /****************************************/
 void set_custom_zip_path() {
     char* primary_path = get_primary_storage_path();
+    char* primary_label = get_primary_storage_label();
     char** extra_paths = get_extra_storage_paths();
+    char** extra_labels = get_extra_storage_labels();
     int num_extra_volumes = get_num_extra_volumes();
 
     static const char* headers[] = { "Setup Free Browse Mode", NULL };
@@ -1658,13 +1690,13 @@ void set_custom_zip_path() {
     char buf[80];
     memset(list_main, 0, MAX_NUM_MANAGED_VOLUMES + list_top_items + 1);
     list_main[0] = "Disable Free Browse Mode";
-    sprintf(buf, "%s%s", list_prefix, primary_path);
+    sprintf(buf, "%s%s", list_prefix, primary_label);
     list_main[1] = strdup(buf);
 
     int i;
     if (extra_paths != NULL) {
         for(i = 0; i < num_extra_volumes; i++) {
-            sprintf(buf, "%s%s", list_prefix, extra_paths[i]);
+            sprintf(buf, "%s%s", list_prefix, extra_labels[i]);
             list_main[i + list_top_items] = strdup(buf);
         }
     }
@@ -1682,7 +1714,10 @@ void set_custom_zip_path() {
             ui_print("Free browse mode disabled\n");
             goto out;
         } else {
-            sprintf(custom_path, "%s/", list_main[chosen_item] + strlen(list_prefix));
+            if (chosen_item == 1)
+                sprintf(custom_path, "%s/", primary_path);
+            else
+                sprintf(custom_path, "%s/", extra_paths[chosen_item - 2]);
             if (is_data_media_volume_path(custom_path))
                 v = volume_for_path("/data");
             else

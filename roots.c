@@ -33,6 +33,7 @@
 #include "flashutils/flashutils.h"
 #include "extendedcommands.h"
 #include "advanced_functions.h"
+#include "recovery_settings.h"
 
 #include "voldclient/voldclient.h"
 
@@ -186,6 +187,100 @@ char** get_extra_storage_paths() {
     paths[j] = NULL;
 
     return paths;
+}
+
+#ifdef TARGET_STORAGE_DISPLAY_LABELS
+static int* setup_display_labels_done = 0;
+static void setup_display_labels() {
+    char* clabels = strdup(TARGET_STORAGE_DISPLAY_LABELS);
+    char* tlabel;
+    char* tofree;
+
+    if (clabels != NULL) {
+        tofree = clabels;
+        read_config_file(PHILZ_SETTINGS_FILE, vol_display_label_primary.key, vol_display_label_primary.value, strsep(&clabels, ","));
+        if (clabels != NULL)
+            read_config_file(PHILZ_SETTINGS_FILE, vol_display_label_extras.key, vol_display_label_extras.value, strsep(&clabels, ""));
+        free(tofree);
+    }
+    setup_display_labels_done = 1;
+}
+#endif
+
+static char* primary_storage_label = NULL;
+char* get_primary_storage_label() {
+#ifdef TARGET_STORAGE_DISPLAY_LABELS
+    if (setup_display_labels_done == 0)
+        setup_display_labels();
+
+    if(vol_display_label_primary.value[0] != '\0') {
+        primary_storage_label = vol_display_label_primary.value;
+        return primary_storage_label;
+    }
+#endif
+
+    if (primary_storage_label == NULL) {
+        if (volume_for_path("storage/sdcard0"))
+            primary_storage_label = "/storage/sdcard0";
+        else
+            primary_storage_label = "/sdcard";
+    }
+    return primary_storage_label;
+}
+
+char** get_extra_storage_labels() {
+    int i = 0, j = 0;
+    static char* labels[MAX_NUM_MANAGED_VOLUMES];
+    int num_extra_volumes = get_num_extra_volumes();
+
+#ifdef TARGET_STORAGE_DISPLAY_LABELS
+    if (setup_display_labels_done == 0)
+        setup_display_labels();
+
+    if(vol_display_label_extras.value[0] != '\0') {
+        if(strchr(vol_display_label_extras.value, ',') != NULL || num_extra_volumes > 1) {
+            char* clabels = strdup(vol_display_label_extras.value);
+            char* tlabel;
+            char* tofree;
+
+            if (clabels != NULL) {
+                tofree = clabels;
+                for (i = 0; i < get_num_volumes(); i++) {
+                    Volume* v = get_device_volumes() + i;
+                    if ((strcmp("/external_sd", v->mount_point) == 0) ||
+                            ((strcmp(get_primary_storage_path(), v->mount_point) != 0) &&
+                            fs_mgr_is_voldmanaged(v) && vold_is_volume_available(v->mount_point))) {
+                        if((tlabel = strsep(&clabels, ",")) != NULL && tlabel[0] != '\0')
+                            labels[j++] = strdup(tlabel);
+                        else
+                            labels[j++] = v->mount_point;
+                    }
+                }
+                free(tofree);
+            }
+        } else
+            labels[j++] = vol_display_label_extras.value;
+        labels[j] = NULL;
+
+        return labels;
+    }
+#endif
+
+    if (num_extra_volumes == 0)
+        return NULL;
+
+    for (i = 0; i < get_num_volumes(); i++) {
+        Volume* v = get_device_volumes() + i;
+        if ((strcmp("/external_sd", v->mount_point) == 0) ||
+                ((strcmp(get_primary_storage_path(), v->mount_point) != 0) &&
+                fs_mgr_is_voldmanaged(v) && vold_is_volume_available(v->mount_point))) {
+            labels[j] = v->mount_point;
+            j++;
+        }
+    }
+    labels[j] = NULL;
+
+    return labels;
 }
 
 static char* android_secure_path = NULL;

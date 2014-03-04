@@ -66,6 +66,10 @@ struct CWMSettingsIntValues boardEnableKeyRepeat = { "boardEnableKeyRepeat", 1};
 // they are initialized on first call
 struct CWMSettingsCharValues ors_backup_path = { "ors_backup_path", ""};
 struct CWMSettingsCharValues user_zip_folder = { "user_zip_folder", ""};
+#ifdef TARGET_STORAGE_DISPLAY_LABELS
+struct CWMSettingsCharValues vol_display_label_primary = { "primary", ""};
+struct CWMSettingsCharValues vol_display_label_extras = { "extras", ""};
+#endif
 
 //----- End initialize recovery key/value settings
 

@@ -73,6 +73,10 @@ struct CWMSettingsIntValues boardEnableKeyRepeat;
 // they are initialized on first call
 struct CWMSettingsCharValues ors_backup_path;
 struct CWMSettingsCharValues user_zip_folder;
+#ifdef TARGET_STORAGE_DISPLAY_LABELS
+struct CWMSettingsCharValues vol_display_label_primary;
+struct CWMSettingsCharValues vol_display_label_extras;
+#endif
 
 #ifdef PHILZ_TOUCH_RECOVERY
 struct CWMSettingsLongIntValues set_brightness;

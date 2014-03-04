@@ -44,6 +44,11 @@ int format_volume(const char* volume);
 
 char* get_primary_storage_path();
 char** get_extra_storage_paths();
+#ifdef TARGET_STORAGE_DISPLAY_LABELS
+static void setup_display_labels();
+#endif
+char* get_primary_storage_label();
+char** get_extra_storage_labels();
 char* get_android_secure_path();
 void setup_legacy_storage_paths();
 int get_num_extra_volumes();

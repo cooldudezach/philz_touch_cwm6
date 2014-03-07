@@ -1680,8 +1680,8 @@ int show_advanced_menu() {
             default:
                 if (chosen_item == FIXED_ADVANCED_ENTRIES && can_partition(primary_path))
                     partition_sdcard(primary_path);
-                else if (chosen_item >= FIXED_ADVANCED_ENTRIES && chosen_item < FIXED_ADVANCED_ENTRIES + num_extra_volumes)
-                    partition_sdcard(extra_paths[chosen_item - FIXED_ADVANCED_ENTRIES]);
+                else if (chosen_item >= FIXED_ADVANCED_ENTRIES && chosen_item <= FIXED_ADVANCED_ENTRIES + num_extra_volumes)
+                    partition_sdcard(extra_paths[chosen_item - FIXED_ADVANCED_ENTRIES - (can_partition(primary_path) ? 1 : 0)]);
                 break;
         }
     }

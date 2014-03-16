@@ -836,11 +836,12 @@ static void choose_ors_volume() {
     list[num_extra_volumes + 1] = NULL;
 
     int chosen_item = get_menu_selection(headers, list, 0, 0);
-    if (chosen_item != GO_BACK && chosen_item != REFRESH)
+    if (chosen_item != GO_BACK && chosen_item != REFRESH) {
         if (chosen_item == 0)
             write_config_file(PHILZ_SETTINGS_FILE, ors_backup_path.key, primary_path);
         else
             write_config_file(PHILZ_SETTINGS_FILE, ors_backup_path.key, extra_paths[chosen_item - 1]);
+    }
 
     free(list[0]);
     if (extra_paths != NULL) {

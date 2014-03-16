@@ -199,8 +199,7 @@ int check_backup_size(const char* backup_path) {
     unsigned long long data_backup_size = 0;
     unsigned long long data_used_bytes = 0;
     unsigned long long data_media_size = 0;
-    if (is_data_media() && (backup_data || backup_data_media))
-    {
+    if (is_data_media() && (backup_data || backup_data_media)) {
         if (0 == ensure_path_mounted("/data") && 0 == Get_Size_Via_statfs("/data")) {
             data_media_size = Get_Folder_Size("/data/media");
             data_used_bytes = Get_Folder_Size("/data");
@@ -262,21 +261,17 @@ void check_restore_size(const char* backup_file_image, const char* backup_path) 
 
     char tmp[PATH_MAX];
     char filename[PATH_MAX];
-    char *dir;
     char** files;
     int numFiles = 0;
 
-    strcpy(tmp, backup_file_image);
-    dir = dirname(tmp);
-    sprintf(tmp, "%s", dir);
-    strcat(tmp, "/");
+    sprintf(tmp, "%s/", DirName(backup_file_image));
     files = gather_files(tmp, "", &numFiles);
 
     if (strlen(backup_file_image) > strlen("win000") && strcmp(backup_file_image + strlen(backup_file_image) - strlen("win000"), "win000") == 0)
         snprintf(tmp, strlen(backup_file_image) - 3, "%s", backup_file_image);
     else
         strcpy(tmp, backup_file_image);
-    sprintf(filename, "%s", basename(tmp));
+    sprintf(filename, "%s", BaseName(tmp));
     
     int i;
     unsigned long fsize;
@@ -372,12 +367,10 @@ int dd_raw_restore_handler(const char* backup_file_image, const char* root) {
     }
 
     // make sure we  have a valid image file name
+    char tmp[PATH_MAX];
     int i = 0;
     const char *raw_image_format[] = { ".img", ".bin", NULL };
-    char* filename;
-    char tmp[PATH_MAX];
-    sprintf(tmp, "%s", backup_file_image);
-    filename = basename(tmp);
+    char* filename = BaseName(backup_file_image);
     while (raw_image_format[i] != NULL) {
         if (strlen(filename) > strlen(raw_image_format[i]) &&
                     strcmp(filename + strlen(filename) - strlen(raw_image_format[i]), raw_image_format[i]) == 0 &&
@@ -423,9 +416,7 @@ int dd_raw_restore_handler(const char* backup_file_image, const char* root) {
         LOGE("failed raw restore of %s to %s\n", filename, root);
     //log
     finish_nandroid_job();
-    sprintf(tmp, "%s", backup_file_image);
-    char *logfile = dirname(tmp);
-    sprintf(tmp, "%s/log.txt", logfile);
+    sprintf(tmp, "%s/log.txt", DirName(backup_file_image));
     ui_print_custom_logtail(tmp, 3);
     return ret;
 }
@@ -599,10 +590,8 @@ int twrp_backup_wrapper(const char* backup_path, const char* backup_file_image, 
         return -1;
     }
 
-    struct stat st;
-    if (0 != stat("/tmp/list/filelist000", &st)) {
-        sprintf(tmp, "%s", backup_path);
-        ui_print("Nothing to backup. Skipping %s\n", basename(tmp));
+    if (!file_found("/tmp/list/filelist000")) {
+        ui_print("Nothing to backup. Skipping %s\n", BaseName(backup_path));
         return 0;
     }
 
@@ -824,10 +813,11 @@ int twrp_tar_extract_wrapper(const char* popen_command, const char* backup_path,
 }
 
 int twrp_restore_wrapper(const char* backup_file_image, const char* backup_path, int callback) {
-    char tmp[PATH_MAX];
+    char path[PATH_MAX];
     char cmd[PATH_MAX];
     char tar_args[6];
     int ret;
+
     // tar vs tar.gz format?
     if ((ret = is_gzip_file(backup_file_image)) < 0)
         return ret;
@@ -842,21 +832,21 @@ int twrp_restore_wrapper(const char* backup_file_image, const char* backup_path,
         char main_filename[PATH_MAX];
         memset(main_filename, 0, sizeof(main_filename));
         strncpy(main_filename, backup_file_image, strlen(backup_file_image) - strlen("000"));
+
         int index = 0;
-        sprintf(tmp, "%s%03i", main_filename, index);
-        while(file_found(tmp)) {
+        sprintf(path, "%s%03i", main_filename, index);
+        while(file_found(path)) {
             ui_print("  * Restoring archive %d\n", index + 1);
-            sprintf(cmd, "cd /; tar %s '%s'; exit $?", tar_args, tmp);
+            sprintf(cmd, "cd /; tar %s '%s'; exit $?", tar_args, path);
             if (0 != (ret = twrp_tar_extract_wrapper(cmd, backup_path, callback)))
                 return ret;
             index++;
-            sprintf(tmp, "%s%03i", main_filename, index);
+            sprintf(path, "%s%03i", main_filename, index);
         }
     } else {
         //single volume archive
         sprintf(cmd, "cd %s; tar %s '%s'; exit $?", backup_path, tar_args, backup_file_image);
-        sprintf(tmp, "%s", backup_file_image);
-        ui_print("Restoring archive %s\n", basename(tmp));
+        ui_print("Restoring archive %s\n", BaseName(backup_file_image));
         ret = twrp_tar_extract_wrapper(cmd, backup_path, callback);
     }
     return ret;
@@ -997,12 +987,10 @@ int nandroid_backup_datamedia(const char* backup_path) {
     if (fmt == NANDROID_BACKUP_FORMAT_TAR) {
         sprintf(tmp, "cd / ; touch %s.tar ; (tar cv data/media | split -a 1 -b 1000000000 /proc/self/fd/0 %s.tar.) 2> /proc/self/fd/1 ; exit $?",
                 backup_file_image, backup_file_image);
-    }
-    else if (fmt == NANDROID_BACKUP_FORMAT_TGZ) {
+    } else if (fmt == NANDROID_BACKUP_FORMAT_TGZ) {
         sprintf(tmp, "cd / ; touch %s.tar.gz ; (tar cv data/media | pigz -c -%d | split -a 1 -b 1000000000 /proc/self/fd/0 %s.tar.gz.) 2> /proc/self/fd/1 ; exit $?",
                 backup_file_image, compression_value.value, backup_file_image);
-    }
-    else {
+    } else {
         // non fatal failure
         LOGE("  - backup format must be tar(.gz), skipping...\n");
         return 0;

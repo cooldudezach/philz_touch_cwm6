@@ -138,6 +138,13 @@ void toggle_signature_check() {
     // ui_print("Signature Check: %s\n", signature_check_enabled.value ? "Enabled" : "Disabled");
 }
 
+static void toggle_install_zip_verify_md5() {
+    char value[3];
+    install_zip_verify_md5.value ^= 1;
+    sprintf(value, "%d", install_zip_verify_md5.value);
+    write_config_file(PHILZ_SETTINGS_FILE, install_zip_verify_md5.key, value);
+}
+
 #ifdef ENABLE_LOKI
 static void toggle_loki_support() {
     char value[3];
@@ -202,7 +209,7 @@ int install_zip(const char* packagefilepath) {
 // top fixed menu items, those before extra storage volumes
 #define FIXED_TOP_INSTALL_ZIP_MENUS 1
 // bottom fixed menu items, those after extra storage volumes
-#define FIXED_BOTTOM_INSTALL_ZIP_MENUS 7
+#define FIXED_BOTTOM_INSTALL_ZIP_MENUS 8
 #define FIXED_INSTALL_ZIP_MENUS (FIXED_TOP_INSTALL_ZIP_MENUS + FIXED_BOTTOM_INSTALL_ZIP_MENUS)
 
 int show_install_update_menu() {
@@ -232,14 +239,16 @@ int show_install_update_menu() {
 
     // FIXED_BOTTOM_INSTALL_ZIP_MENUS
     char item_toggle_signature_check[MENU_MAX_COLS] = "";
+    char item_install_zip_verify_md5[MENU_MAX_COLS] = "";
     char item_check_update_binary_version[MENU_MAX_COLS] = "";
     install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes]     = "Choose zip Using Free Browse Mode";
     install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 1] = "Choose zip from Last Install Folder";
     install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 2] = "Install zip from sideload";
     install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 3] = "Install Multiple zip Files";
     install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 4] = item_toggle_signature_check;
-    install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 5] = item_check_update_binary_version;
-    install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 6] = "Setup Free Browse Mode";
+    install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 5] = item_install_zip_verify_md5;
+    install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 6] = item_check_update_binary_version;
+    install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 7] = "Setup Free Browse Mode";
 
     // extra NULL for GO_BACK
     install_menu_items[FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + FIXED_BOTTOM_INSTALL_ZIP_MENUS] = NULL;
@@ -249,9 +258,13 @@ int show_install_update_menu() {
             ui_format_gui_menu(item_toggle_signature_check, "Signature Verification", "(x)");
         else ui_format_gui_menu(item_toggle_signature_check, "Signature Verification", "( )");
 
+        if (install_zip_verify_md5.value)
+            ui_format_gui_menu(item_install_zip_verify_md5, "Verify zip md5sum", "(x)");
+        else ui_format_gui_menu(item_install_zip_verify_md5, "Verify zip md5sum", "( )");
+
         if (check_update_binary_version)
-            ui_format_gui_menu(item_check_update_binary_version, "Don't Allow Old update-binary", "(x)");
-        else ui_format_gui_menu(item_check_update_binary_version, "Don't Allow Old update-binary", "( )");
+            ui_format_gui_menu(item_check_update_binary_version, "Allow Old update-binary", "( )");
+        else ui_format_gui_menu(item_check_update_binary_version, "Allow Old update-binary", "(x)");
 
         chosen_item = get_menu_selection(headers, install_menu_items, 0, 0);
         if (chosen_item == 0) {
@@ -274,12 +287,14 @@ int show_install_update_menu() {
         } else if (chosen_item == FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 4) {
             toggle_signature_check();
         } else if (chosen_item == FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 5) {
+            toggle_install_zip_verify_md5();
+        } else if (chosen_item == FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 6) {
             check_update_binary_version ^= 1;
             if (!check_update_binary_version) {
                 ui_print("Try fixing some assert errors\n");
                 ui_print("Setting will be reset on reboot\n");
             }
-        } else if (chosen_item == FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 6) {
+        } else if (chosen_item == FIXED_TOP_INSTALL_ZIP_MENUS + num_extra_volumes + 7) {
             set_custom_zip_path();
         } else {
             // GO_BACK or REFRESH (chosen_item < 0)
@@ -503,13 +518,22 @@ void show_choose_zip_menu(const char *mount_point) {
     char* file = choose_file_menu(mount_point, ".zip", headers);
     if (file == NULL)
         return;
-    static char* confirm_install = "Confirm install?";
-    static char confirm[PATH_MAX];
-    sprintf(confirm, "Yes - Install %s", basename(file));
 
-    if (confirm_selection(confirm_install, confirm)) {
+    char tmp[PATH_MAX];
+    int yes_confirm;
+
+    sprintf(tmp, "Yes - Install %s", BaseName(file));
+    if (install_zip_verify_md5.value) start_md5_verify_thread(file);
+    else start_md5_display_thread(file);
+
+    yes_confirm = confirm_selection("Confirm install?", tmp);
+
+    if (install_zip_verify_md5.value) stop_md5_verify_thread();
+    else stop_md5_display_thread();
+
+    if (yes_confirm) {
         install_zip(file);
-        write_last_install_path(dirname(file));
+        write_last_install_path(DirName(file));
     }
 
     free(file);
@@ -535,31 +559,29 @@ void show_nandroid_restore_menu(const char* path) {
     free(file);
 }
 
-void show_nandroid_delete_menu(const char* path) {
-    if (ensure_path_mounted(path) != 0) {
-        LOGE("Can't mount %s\n", path);
+void show_nandroid_delete_menu(const char* volume_path) {
+    if (ensure_path_mounted(volume_path) != 0) {
+        LOGE("Can't mount %s\n", volume_path);
         return;
     }
 
     static const char* headers[] = { "Choose a backup to delete", NULL };
-
-    char backup_path[PATH_MAX];
     char tmp[PATH_MAX];
 
     if (twrp_backup_mode.value) {
         char device_id[PROPERTY_VALUE_MAX];
         get_device_id(device_id);
-        sprintf(backup_path, "%s/%s/%s", path, TWRP_BACKUP_PATH, device_id);
+        sprintf(tmp, "%s/%s/%s", volume_path, TWRP_BACKUP_PATH, device_id);
     } else {
-        sprintf(backup_path, "%s/%s", path, CWM_BACKUP_PATH);    
+        sprintf(tmp, "%s/%s", volume_path, CWM_BACKUP_PATH);    
     }
 
     for(;;) {
-        char* file = choose_file_menu(backup_path, NULL, headers);
+        char* file = choose_file_menu(tmp, NULL, headers);
         if (file == NULL)
             return;
 
-        sprintf(tmp, "Yes - Delete %s", basename(file));
+        sprintf(tmp, "Yes - Delete %s", BaseName(file));
         if (confirm_selection("Confirm delete?", tmp)) {
             sprintf(tmp, "rm -rf '%s'", file);
             __system(tmp);

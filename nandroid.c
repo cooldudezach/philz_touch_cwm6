@@ -91,7 +91,7 @@ static int nandroid_files_count = 0;
 static void nandroid_callback(const char* filename) {
     if (filename == NULL)
         return;
-    const char* justfile = basename(filename);
+    const char* justfile = BaseName(filename);
     char tmp[PATH_MAX];
     strcpy(tmp, justfile);
     if (tmp[strlen(tmp) - 1] == '\n')
@@ -109,7 +109,7 @@ static void nandroid_callback(const char* filename) {
     size_progress[ui_get_text_cols() - 1] = '\0';
 
 #ifdef PHILZ_TOUCH_RECOVERY
-    ui_print_default_color(3);
+    ui_print_preset_colors(3, NULL);
 #endif
 
     if (use_nandroid_simple_logging.value)
@@ -129,20 +129,36 @@ static void nandroid_callback(const char* filename) {
         ui_delete_line(2);
     }
 #ifdef PHILZ_TOUCH_RECOVERY
-    ui_print_color(0, 0);
+    ui_print_preset_colors(0, NULL);
 #endif
     ui_set_log_stdout(1);
 }
 
 static void compute_directory_stats(const char* directory) {
     char tmp[PATH_MAX];
+    char count_text[100];
+
+    // reset file count if we ever return before setting it
+    nandroid_files_count = 0;
+    nandroid_files_total = 0;
+
     sprintf(tmp, "find %s | %s wc -l > /tmp/dircount", directory, strcmp(directory, "/data") == 0 && is_data_media() ? "grep -v /data/media |" : "");
     __system(tmp);
-    char count_text[100];
+
     FILE* f = fopen("/tmp/dircount", "r");
-    fread(count_text, 1, sizeof(count_text), f);
+    if (f == NULL)
+        return;
+
+    if (fgets(count_text, sizeof(count_text), f) == NULL) {
+        fclose(f);
+        return;
+    }
+
+    size_t len = strlen(count_text);
+    if (count_text[len - 1] == '\n')
+        count_text[len - 1] = '\0';
+
     fclose(f);
-    nandroid_files_count = 0;
     nandroid_files_total = atoi(count_text);
 
     if (!twrp_backup_mode.value) {
@@ -380,7 +396,7 @@ int nandroid_backup_partition_extended(const char* backup_path, const char* moun
     int ret = 0;
     char name[PATH_MAX];
     char tmp[PATH_MAX];
-    strcpy(name, basename(mount_point));
+    strcpy(name, BaseName(mount_point));
 
     struct stat file_info;
     sprintf(tmp, "%s/%s", get_primary_storage_path(), NANDROID_HIDE_PROGRESS_FILE);
@@ -470,7 +486,7 @@ int nandroid_backup_partition(const char* backup_path, const char* root) {
             strcmp(vol->fs_type, "bml") == 0 ||
             strcmp(vol->fs_type, "emmc") == 0) {
         ui_print("\n>> Backing up %s...\n", root);
-        const char* name = basename(root);
+        const char* name = BaseName(root);
         if (strcmp(backup_path, "-") == 0)
             strcpy(tmp, "/proc/self/fd/1");
         else if (twrp_backup_mode.value)
@@ -607,8 +623,7 @@ int nandroid_backup(const char* backup_path) {
     vol = volume_for_path("/efs");
     if (backup_efs && vol != NULL) {
         //first backup in raw format, returns 0 on success (or if skipped), else 1
-        strcpy(tmp, backup_path);
-        if (0 != dd_raw_backup_handler(dirname(tmp), "/efs"))
+        if (0 != dd_raw_backup_handler(DirName(backup_path), "/efs"))
             ui_print("EFS raw image backup failed! Trying native backup...\n");
 
         //second backup in native cwm format
@@ -855,7 +870,7 @@ static nandroid_restore_handler get_restore_handler(const char *backup_path) {
 
 int nandroid_restore_partition_extended(const char* backup_path, const char* mount_point, int umount_when_finished) {
     int ret = 0;
-    char* name = basename(mount_point);
+    char* name = BaseName(mount_point);
 
     nandroid_restore_handler restore_handler = NULL;
     const char *filesystems[] = { "yaffs2", "ext2", "ext3", "ext4", "vfat", "exfat", "rfs", "f2fs", NULL };
@@ -938,7 +953,7 @@ int nandroid_restore_partition_extended(const char* backup_path, const char* mou
                 ui_print("Skipping restore of %s\n", mount_point);
                 return 0;
             }
-            ui_print("Found backup image: %s\n", basename(tmp));
+            ui_print("Found backup image: %s\n", BaseName(tmp));
         } else if (backup_filesystem == NULL || restore_handler == NULL) {
             //ui_print("%s.img not found. Skipping restore of %s.\n", name, mount_point);
             ui_print("No %s backup found(img, tar, dup). Skipping restore of %s.\n", name, mount_point);
@@ -1018,7 +1033,7 @@ int nandroid_restore_partition_extended(const char* backup_path, const char* mou
         LOGE("skipping restore of selinux context\n");
     } else if (0 == strcmp(mount_point, "/data") || 0 == strcmp(mount_point, "/system") || 0 == strcmp(mount_point, "/cache")) {
             ui_print("restoring selinux context...\n");
-            name = basename(mount_point);
+            name = BaseName(mount_point);
             sprintf(tmp, "%s/%s.context", backup_path, name);
             if ((ret = restorecon_from_file(tmp)) < 0) {
                 ui_print("restorecon from %s.context error, trying regular restorecon.\n", name);
@@ -1051,7 +1066,7 @@ int nandroid_restore_partition(const char* backup_path, const char* root) {
     if (strcmp(vol->fs_type, "mtd") == 0 || strcmp(vol->fs_type, "bml") == 0 || strcmp(vol->fs_type, "emmc") == 0) {
         ui_print("\n>> Restoring %s...\nUsing raw mode...\n", root);
         int ret;
-        const char* name = basename(root);
+        const char* name = BaseName(root);
 
         // fix partition could be formatted when no image to restore
         // exp: if md5 check disabled and empty backup folder
@@ -1064,7 +1079,7 @@ int nandroid_restore_partition(const char* backup_path, const char* root) {
             sprintf(tmp, "%s%s.img", backup_path, root);
 
         if (0 != strcmp(backup_path, "-") && 0 != stat(tmp, &file_check)) {
-            ui_print("%s not found. Skipping restore of %s\n", basename(tmp), root);
+            ui_print("%s not found. Skipping restore of %s\n", BaseName(tmp), root);
             return 0;
         }
 
@@ -1311,10 +1326,23 @@ int bu_main(int argc, char** argv) {
             dup2(fd, STDIN_FILENO);
             close(fd);
         }
+
         char partition[100];
         FILE* f = fopen("/tmp/ro.bu.restore", "r");
-        fread(partition, 1, sizeof(partition), f);
-        fclose(f);
+        if (f == NULL) {
+            printf("cannot open ro.bu.restore\n");
+            return bu_usage();
+        }
+
+        if (fgets(partition, sizeof(partition), f) == NULL) {
+            fclose(f);
+            printf("nothing to restore!\n");
+            return bu_usage();
+        }
+
+        size_t len = strlen(partition);
+        if (partition[len - 1] == '\n')
+            partition[len - 1] = '\0';
 
         // fprintf(stderr, "%d %d %s\n", fd, STDIN_FILENO, argv[3]);
         return nandroid_undump(partition);

@@ -48,27 +48,28 @@
 
 
 // Start initialize recovery key/value settings
-struct CWMSettingsIntValues auto_restore_settings = { "auto_restore_settings", 0};
-struct CWMSettingsIntValues check_root_and_recovery = { "check_root_and_recovery", 1};
-struct CWMSettingsIntValues apply_loki_patch = { "apply_loki_patch", 1};
-struct CWMSettingsIntValues twrp_backup_mode = { "twrp_backup_mode", 0};
-struct CWMSettingsIntValues compression_value = { "compression_value", TAR_GZ_DEFAULT};
-struct CWMSettingsIntValues nandroid_add_preload = { "nandroid_add_preload", 0};
-struct CWMSettingsIntValues enable_md5sum = { "enable_md5sum", 1};
-struct CWMSettingsIntValues show_nandroid_size_progress = { "show_nandroid_size_progress", 0};
-struct CWMSettingsIntValues use_nandroid_simple_logging = { "use_nandroid_simple_logging", 1};
-struct CWMSettingsIntValues nand_prompt_on_low_space = { "nand_prompt_on_low_space", 1};
-struct CWMSettingsIntValues signature_check_enabled = { "signature_check_enabled", 0};
+struct CWMSettingsIntValues auto_restore_settings = { "auto_restore_settings", 0 };
+struct CWMSettingsIntValues check_root_and_recovery = { "check_root_and_recovery", 1 };
+struct CWMSettingsIntValues apply_loki_patch = { "apply_loki_patch", 1 };
+struct CWMSettingsIntValues twrp_backup_mode = { "twrp_backup_mode", 0 };
+struct CWMSettingsIntValues compression_value = { "compression_value", TAR_GZ_DEFAULT };
+struct CWMSettingsIntValues nandroid_add_preload = { "nandroid_add_preload", 0 };
+struct CWMSettingsIntValues enable_md5sum = { "enable_md5sum", 1 };
+struct CWMSettingsIntValues show_nandroid_size_progress = { "show_nandroid_size_progress", 0 };
+struct CWMSettingsIntValues use_nandroid_simple_logging = { "use_nandroid_simple_logging", 1 };
+struct CWMSettingsIntValues nand_prompt_on_low_space = { "nand_prompt_on_low_space", 1 };
+struct CWMSettingsIntValues signature_check_enabled = { "signature_check_enabled", 0 };
+struct CWMSettingsIntValues install_zip_verify_md5 = { "install_zip_verify_md5", 0 };
 
-struct CWMSettingsIntValues boardEnableKeyRepeat = { "boardEnableKeyRepeat", 1};
+struct CWMSettingsIntValues boardEnableKeyRepeat = { "boardEnableKeyRepeat", 1 };
 
 // these are not checked on recovery start
 // they are initialized on first call
-struct CWMSettingsCharValues ors_backup_path = { "ors_backup_path", ""};
-struct CWMSettingsCharValues user_zip_folder = { "user_zip_folder", ""};
+struct CWMSettingsCharValues ors_backup_path = { "ors_backup_path", "" };
+struct CWMSettingsCharValues user_zip_folder = { "user_zip_folder", "" };
 #ifdef TARGET_STORAGE_DISPLAY_LABELS
-struct CWMSettingsCharValues vol_display_label_primary = { "primary", ""};
-struct CWMSettingsCharValues vol_display_label_extras = { "extras", ""};
+struct CWMSettingsCharValues vol_display_label_primary = { "primary", "" };
+struct CWMSettingsCharValues vol_display_label_extras = { "extras", "" };
 #endif
 
 //----- End initialize recovery key/value settings
@@ -253,6 +254,15 @@ static void check_signature_check() {
         signature_check_enabled.value = 0;
 }
 
+static void check_install_zip_verify_md5() {
+    char value[PROPERTY_VALUE_MAX];
+    read_config_file(PHILZ_SETTINGS_FILE, install_zip_verify_md5.key, value, "0");
+    if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0)
+        install_zip_verify_md5.value = 1;
+    else
+        install_zip_verify_md5.value = 0;
+}
+
 static void initialize_extra_partitions_state() {
     int i;
     for(i = 0; i < EXTRA_PARTITIONS_NUM; ++i) {
@@ -272,6 +282,7 @@ void refresh_recovery_settings(int on_start) {
     check_nandroid_simple_logging();
     check_prompt_on_low_space();
     check_signature_check();
+    check_install_zip_verify_md5();
     initialize_extra_partitions_state();
 #ifdef ENABLE_LOKI
     loki_support_enabled();

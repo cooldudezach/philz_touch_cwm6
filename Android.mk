@@ -35,6 +35,7 @@ LOCAL_SRC_FILES := \
     mounts.c \
     extendedcommands.c \
     advanced_functions.c \
+    digest/md5.c \
     recovery_settings.c \
     nandroid.c \
     reboot.c \
@@ -68,7 +69,7 @@ RECOVERY_NAME := CWM-based Recovery
 endif
 endif
 
-PHILZ_BUILD := 6.19.3
+PHILZ_BUILD := 6.21.2
 CWM_BASE_VERSION := v6.0.4.7
 LOCAL_CFLAGS += -DCWM_BASE_VERSION="$(CWM_BASE_VERSION)"
 RECOVERY_VERSION := $(RECOVERY_NAME) $(CWM_BASE_VERSION)
@@ -143,7 +144,8 @@ LOCAL_STATIC_LIBRARIES += libext4_utils_static libz libsparse_static
 
 ifeq ($(ENABLE_LOKI_RECOVERY),true)
   LOCAL_CFLAGS += -DENABLE_LOKI
-  LOCAL_STATIC_LIBRARIES += libloki_recovery
+  LOCAL_STATIC_LIBRARIES += libloki_static
+  LOCAL_SRC_FILES += loki/loki_recovery.c
 endif
 
 # This binary is in the recovery ramdisk, which is otherwise a copy of root.
